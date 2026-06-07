@@ -1,78 +1,97 @@
--- Xóa visual map (giữ ground, NPC, player, nước, bầu trời)
+-- ========== POTATO MODE CỰC MẠNH (XÓA HẾT MỸ THUẬT, GIỮ NGUYÊN GAMEPLAY) ==========
 task.spawn(function()
+    local Lighting = game:GetService("Lighting")
     local Workspace = game:GetService("Workspace")
     local Players = game:GetService("Players")
+    local RunService = game:GetService("RunService")
     local LocalPlayer = Players.LocalPlayer
     
-    -- Danh sách tên object trang trí cần xóa
-    local visualNames = {
-        "Grass", "Bush", "Flower", "Leaf", "Rock", "Pebble", "Stone",
-        "Tree", "Log", "Branch", "Cloud", "Smoke", "Dust", "Sparkle",
-        "Glow", "Aura", "Effect", "Particle", "VFX", "Decal", "Texture",
-        "Billboard", "SelectionBox", "Light", "PointLight", "SpotLight",
-        "Beam", "Trail", "Fire", "Sparkles", "Smoke"
-    }
+    -- 1. Ép lighting mỗi frame (tối màu, tắt shadow)
+    RunService.RenderStepped:Connect(function()
+        Lighting.Brightness = 0.4
+        Lighting.Ambient = Color3.new(0.15, 0.15, 0.15)
+        Lighting.OutdoorAmbient = Color3.new(0.15, 0.15, 0.15)
+        Lighting.GlobalShadows = false
+        Lighting.ShadowSoftness = 0
+        Lighting.ExposureCompensation = 0.3
+        Lighting.ColorShift_Top = Color3.new(0.1, 0.1, 0.1)
+        Lighting.ColorShift_Bottom = Color3.new(0.05, 0.05, 0.05)
+        Lighting.ClockTime = 0  -- Ép nửa đêm, tối hết cỡ
+        Lighting.FogEnd = 50    -- Sương mù gần để che bớt chi tiết xa
+        Lighting.FogColor = Color3.new(0.1, 0.1, 0.1)
+    end)
     
-    -- Kiểm tra part có phải là sàn/ground không
-    local function isWalkablePart(part)
-        if not part:IsA("BasePart") then return false end
-        if part.CanCollide and part.Size.Y > 1 then return true end
-        local name = part.Name:lower()
-        if name:find("ground") or name:find("floor") or name:find("platform") or name:find("base") then
-            return true
-        end
-        return false
-    end
-    
-    -- Xóa visual
-    local function removeVisual(obj)
-        pcall(function()
-            -- Giữ player
-            if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-                if obj == LocalPlayer.Character then return end
-                -- Giữ NPC (có humanoid nhưng không phải local)
-                return
-            end
-            -- Giữ nước (Terrain)
-            if obj:IsA("Terrain") then return end
-            -- Giữ part có thể đứng (chỉ xóa decal/texture trên đó)
-            if obj:IsA("BasePart") and isWalkablePart(obj) then
-                for _, child in pairs(obj:GetChildren()) do
-                    if child:IsA("Decal") or child:IsA("Texture") then
-                        child:Destroy()
-                    end
-                end
-                return
-            end
-            -- Xóa theo tên
-            for _, name in pairs(visualNames) do
-                if obj.Name:find(name) or obj.Name:lower():find(name:lower()) then
-                    obj:Destroy()
-                    break
-                end
-            end
-            -- Xóa các component effect
+    -- 2. Xóa tất cả effect, light, particle, decal, beam (chạy liên tục)
+    local function killEffects(obj)
+        if not obj then return end
+        local success, err = pcall(function()
             if obj:IsA("ParticleEmitter") or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-                obj:Destroy()
-            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj.Enabled = false
                 obj:Destroy()
             elseif obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight") then
                 obj:Destroy()
+            elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                obj:Destroy()
             elseif obj:IsA("Beam") or obj:IsA("Trail") then
                 obj:Destroy()
-            elseif obj:IsA("BillboardGui") or obj:IsA("SelectionBox") then
+            elseif obj:IsA("BillboardGui") or obj:IsA("SelectionBox") or obj:IsA("SelectionSphere") then
+                obj:Destroy()
+            elseif obj:IsA("MeshPart") and obj.Material == Enum.Material.Neon then
+                obj.Material = Enum.Material.SmoothPlastic
+            elseif obj:IsA("Explosion") then
+                obj:Destroy()
+            elseif obj:IsA("Sound") then
                 obj:Destroy()
             end
         end)
     end
     
-    -- Quét toàn bộ Workspace
+    -- Quét toàn bộ Workspace hiện tại
     for _, obj in pairs(Workspace:GetDescendants()) do
-        removeVisual(obj)
+        killEffects(obj)
     end
     
-    -- Bắt object mới sinh ra
-    Workspace.DescendantAdded:Connect(removeVisual)
+    -- Bắt object mới sinh ra (skill, boss effect)
+    Workspace.DescendantAdded:Connect(killEffects)
     
-    print("Đã xóa visual map (giữ ground, NPC, player, nước, bầu trời)")
+    -- 3. Xóa detail map (cây cỏ, đá nhỏ, vật dụng trang trí)
+    local detailNames = {"Grass", "Bush", "Rock", "Pebble", "Flower", "Tree", "Leaf", "Cloud", "Smoke", "Dust", "Sparkle", "Glow", "Aura", "Effect", "Particle", "VFX"}
+    
+    local function killDetail(obj)
+        for _, name in pairs(detailNames) do
+            if obj.Name:find(name) or obj.Name:lower():find(name:lower()) then
+                pcall(function() obj:Destroy() end)
+                break
+            end
+        end
+    end
+    
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        killDetail(obj)
+    end
+    Workspace.DescendantAdded:Connect(killDetail)
+    
+    -- 4. Giảm chất lượng mesh/texture toàn map
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        pcall(function()
+            if obj:IsA("Part") or obj:IsA("MeshPart") then
+                obj.Material = Enum.Material.SmoothPlastic
+                obj.Reflectance = 0
+            elseif obj:IsA("Decal") then
+                obj:Destroy()
+            end
+        end)
+    end
+    
+    -- 5. Tắt water reflection và wave (giảm lag mạnh)
+    local Terrain = Workspace.Terrain
+    if Terrain then
+        Terrain.WaterReflectance = 0
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+        Terrain.WaterTransparency = 0
+    end
+    
+    print("Potato Mode cực mạnh đã kích hoạt! Map sẽ xấu hẳn để tăng FPS.")
 end)
+-- ========== KẾT THÚC ==========
